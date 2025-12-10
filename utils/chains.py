@@ -44,7 +44,7 @@ def step_analyze_intent(inputs):
     res = call_llm(prompt, system_role="资深旅行顾问")
     return json.loads(res)['summary']
 
-# --- 节点 2: 骨架与地图规划 (核心升级) ---
+# --- 节点 2: 骨架与地图规划 ---
 def step_create_skeleton(summary, days, dest):
     prompt = f"""
     目的地：{dest}

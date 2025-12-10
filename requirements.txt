@@ -3,4 +3,4 @@ openai
 pandas
 folium
 streamlit-folium
-fpdf
+fpdf2

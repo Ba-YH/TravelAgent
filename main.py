@@ -1,9 +1,9 @@
 import streamlit as st
 import datetime
-import chains
+from utils import chains
 import folium
 from streamlit_folium import st_folium
-from pdf_gen import create_pdf
+from utils.pdf_gen import create_pdf
 
 st.set_page_config(page_title="深度游", layout="wide", page_icon="🌏")
 

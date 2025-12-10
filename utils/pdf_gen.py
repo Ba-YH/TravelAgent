@@ -14,7 +14,7 @@ def create_pdf(dest, summary, detailed_md, logistics):
     pdf = PDF()
     pdf.add_page()
 
-    font_path = 'font.ttf'
+    font_path = '../assets/font.ttf'
     if os.path.exists(font_path):
         pdf.add_font('CustomFont', '', font_path, uni=True)
         pdf.set_font('CustomFont', '', 12)

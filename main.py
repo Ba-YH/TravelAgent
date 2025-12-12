@@ -1,19 +1,29 @@
-import streamlit as st
 import datetime
-from utils import chains
+import os
+import streamlit as st
 import folium
 from streamlit_folium import st_folium
+
+# 假设这些模块/函数存在且功能正常
+from utils import chains
 from utils.pdf_gen import create_pdf
 
-st.set_page_config(page_title="深度游", layout="wide", page_icon="🌏")
+# --- 常量与配置 ---
+APP_TITLE = "🌏 智能旅行规划师"
+PAGE_ICON = "🌏"
+LAYOUT = "wide"
+MAP_ZOOM_START = 11
+DAY_COLORS = ['red', 'blue', 'green', 'purple', 'orange', 'darkred', 'cadetblue']
 
-# 初始化 Session State
-if "data" not in st.session_state:
-    st.session_state.data = None
-if "generating" not in st.session_state:
-    st.session_state.generating = False
+st.set_page_config(page_title="智能旅行规划师", layout=LAYOUT, page_icon=PAGE_ICON)
 
-# --- CSS ---
+# --- 会话状态初始化 ---
+if "travel_data" not in st.session_state:
+    st.session_state.travel_data = None
+if "is_generating" not in st.session_state:
+    st.session_state.is_generating = False
+
+# --- 自定义 CSS 样式 ---
 st.markdown("""
 <style>
     .stButton>button {height: 3em; border-radius: 10px; font-weight: bold;}
@@ -21,148 +31,186 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-st.title("🌏 智能旅行规划师")
-st.caption("Context-Aware Reasoning | Multi-Point Mapping | Domestic/Intl Logic")
+st.title(APP_TITLE)
+st.caption("上下文感知推理 | 透明式思维链 | 多点地图轨迹 ")
 
-# --- 侧边栏：输入 ---
+# --- 侧边栏：用户输入 ---
 with st.sidebar:
     st.header("1. 填写需求")
-    dest = st.text_input("📍 目的地", "北京")
-    days = st.slider("📅 游玩天数", 1, 10, 3)
+
+    destination = st.text_input("📍 目的地", "北京")
+    num_days = st.slider("📅 游玩天数", 1, 10, 3)
     start_date = st.date_input("出发日期", datetime.date.today())
 
     st.header("2. 个性化")
-    who = st.selectbox("同行人", ["独自一人", "情侣", "带父母", "带孩子", "朋友结伴"])
-    budget = st.select_slider("预算", options=["穷游", "经济", "舒适", "豪华"])
-    interests = st.multiselect("偏好", ["历史人文", "自然风光", "地道美食", "网红打卡", "博物馆"], default=["历史人文"])
+    companion_type = st.selectbox("同行人", ["独自一人", "情侣", "带父母", "带孩子", "朋友结伴"])
+    travel_budget = st.select_slider("预算", options=["穷游", "经济", "舒适", "豪华"])
+    user_interests = st.multiselect(
+        "偏好",
+        ["历史人文", "自然风光", "地道美食", "网红打卡", "博物馆"],
+        default=["历史人文"]
+    )
 
     st.divider()
-    if st.button("🚀 生成详细路书", type="primary"):
-        st.session_state.generating = True
+
+    # 切换生成状态
+    if st.button("🚀 生成详细攻略", type="primary"):
+        st.session_state.is_generating = True
     else:
-        st.session_state.generating = False
+        st.session_state.is_generating = False
+
 
 # --- 核心逻辑执行 ---
-if st.session_state.generating:
-    st.session_state.data = {} # 清空旧数据
-    inputs = {"dest": dest, "dates": str(start_date), "people": who, "budget": budget, "interests": interests}
+if st.session_state.is_generating:
+    # 清空旧数据并初始化存储字典
+    st.session_state.travel_data = {}
+
+    input_params = {
+        "dest": destination,
+        "dates": str(start_date),
+        "people": companion_type,
+        "budget": travel_budget,
+        "interests": user_interests
+    }
 
     try:
-        # 1. 意图分析
+        # 1. 意图分析与摘要生成
         with st.status("🔍 正在分析目的地环境...", expanded=True) as status:
-            summary = chains.step_analyze_intent(inputs)
-            st.session_state.data['summary'] = summary
-            st.write(f"定位：{summary}")
+            travel_summary = chains.step_analyze_intent(input_params)
+            st.session_state.travel_data['summary'] = travel_summary
+            st.write(f"定位：{travel_summary}")
 
-            # 2. 规划具体景点骨架 (含坐标)
+            # 2. 骨架规划（含坐标）
             st.write("🗺️ 正在检索景点坐标并规划路线...")
-            skeleton = chains.step_create_skeleton(summary, days, dest)
-            st.session_state.data['skeleton'] = skeleton
+            travel_skeleton = chains.step_create_skeleton(travel_summary, num_days, destination)
+            st.session_state.travel_data['skeleton'] = travel_skeleton
 
             status.update(label="✅ 路线骨架生成完毕", state="complete", expanded=False)
 
-        # 3. 撰写每日详情 (带进度条)
+        # 3. 每日详细内容生成（带进度条）
         progress_bar = st.progress(0)
-        full_md = ""
-        skeleton = st.session_state.data['skeleton']
+        full_markdown_report = ""
+        travel_skeleton = st.session_state.travel_data['skeleton'] # 获取更新后的骨架
 
         status_text = st.empty()
-        for i, day in enumerate(skeleton):
-            status_text.text(f"正在撰写 Day {day['day']}: {day['title']}...")
-            # 传入用户画像
-            content = chains.step_detail_day(day, f"{who}, {budget}")
-            skeleton[i]['content'] = content # 存入结构中
-            full_md += f"# Day {day['day']}：{day['title']}\n{content}\n\n"
-            progress_bar.progress((i + 1) / len(skeleton))
 
-        st.session_state.data['skeleton'] = skeleton
-        st.session_state.data['full_md'] = full_md
+        # 遍历每一天以生成详细内容
+        for idx, day_plan in enumerate(travel_skeleton):
+            day_num = day_plan['day']
+            day_title = day_plan['title']
+
+            status_text.text(f"正在撰写 Day {day_num}: {day_title}...")
+
+            # 生成内容详情，传入用户上下文
+            user_context = f"{companion_type}, {travel_budget}"
+            day_content = chains.step_detail_day(day_plan, user_context)
+
+            travel_skeleton[idx]['content'] = day_content # 存储生成的内容
+            full_markdown_report += f"# Day {day_num}：{day_title}\n{day_content}\n\n"
+
+            progress_bar.progress((idx + 1) / len(travel_skeleton))
+
+        st.session_state.travel_data['skeleton'] = travel_skeleton
+        st.session_state.travel_data['full_markdown_report'] = full_markdown_report
         status_text.empty()
 
-        # 4. 生成行前准备 (智能判断境内外)
+        # 4. 后勤生成
         with st.spinner("🧳 正在根据目的地生成专属行前清单..."):
-            logistics = chains.step_logistics(dest, full_md)
-            st.session_state.data['logistics'] = logistics
+            logistics_content = chains.step_logistics(destination, full_markdown_report)
+            st.session_state.travel_data['logistics'] = logistics_content
 
     except Exception as e:
         st.error(f"生成过程中出现错误: {e}")
         st.stop()
 
-    st.rerun() # 强制刷新显示结果
+    # 重新运行以从生成状态切换到显示状态
+    st.rerun()
 
-# --- 结果展示界面 ---
-if st.session_state.data:
-    data = st.session_state.data
+# --- 结果显示界面 ---
+if st.session_state.travel_data:
+    data = st.session_state.travel_data
+    travel_skeleton = data['skeleton']
 
-    # 顶部概览
+    # 顶层概览
     st.info(f"🎯 **旅行基调**：{data['summary']}")
 
-    # 使用 Tabs 布局
-    tab1, tab2, tab3 = st.tabs(["🗺️ 行程地图 & 详情", "🎒 行前准备 & 贴士", "📥 导出报告"])
+    # 使用标签页布局
+    tab_map_detail, tab_logistics, tab_export = st.tabs(["🗺️ 行程地图 & 详情", "🎒 行前准备 & 贴士", "📥 导出报告"])
 
-    with tab1:
-        # --- A. 地图绘制 (支持多点轨迹) ---
-        skeleton = data['skeleton']
+    with tab_map_detail:
+        # --- 地图绘制 ---
         try:
-            # 寻找地图中心点 (取第一天的第一个景点)
-            start_loc = [skeleton[0]['spots'][0]['lat'], skeleton[0]['spots'][0]['lon']]
-            m = folium.Map(location=start_loc, zoom_start=11)
+            # 确定地图中心（第一天的第一个景点）
+            first_spot = travel_skeleton[0]['spots'][0]
+            start_location = [first_spot['lat'], first_spot['lon']]
+            map_instance = folium.Map(location=start_location, zoom_start=MAP_ZOOM_START)
 
-            colors = ['red', 'blue', 'green', 'purple', 'orange', 'darkred', 'cadetblue']
+            # 绘制每一天的轨迹和标记
+            for i, day_plan in enumerate(travel_skeleton):
+                day_color = DAY_COLORS[i % len(DAY_COLORS)]
+                day_coordinates = []
 
-            for i, day in enumerate(skeleton):
-                day_color = colors[i % len(colors)]
-                day_coords = []
+                # 绘制当天的景点
+                for spot in day_plan['spots']:
+                    location = [spot['lat'], spot['lon']]
+                    day_coordinates.append(location)
 
-                # 绘制该天内的所有景点
-                for spot in day['spots']:
-                    loc = [spot['lat'], spot['lon']]
-                    day_coords.append(loc)
+                    # 创建自定义弹窗，增加宽度以适应中文字符
+                    popup_content = f"第{day_plan['day']}天: {spot['name']}"
+                    custom_popup = folium.Popup(popup_content, max_width=300)
+
                     folium.Marker(
-                        loc,
-                        popup=f"Day {day['day']}: {spot['name']}",
-                        icon=folium.Icon(color=day_color, icon="info-sign")
-                    ).add_to(m)
+                        location,
+                        popup=custom_popup,
+                        icon=folium.Icon(color=day_color, icon="info-sign"),
+                        tooltip=popup_content # 悬停提示以快速查看信息
+                    ).add_to(map_instance)
 
-                # 画出当天的游玩连线
-                if len(day_coords) > 1:
+                # 绘制当天的路线
+                if len(day_coordinates) > 1:
                     folium.PolyLine(
-                        day_coords,
+                        day_coordinates,
                         color=day_color,
                         weight=3,
                         opacity=0.8,
-                        tooltip=f"Day {day['day']} 路线"
-                    ).add_to(m)
+                        tooltip=f"Day {day_plan['day']} 路线"
+                    ).add_to(map_instance)
 
-            st_folium(m, width=None, height=400)
+            # 在 Streamlit 中显示地图
+            st_folium(map_instance, width="100%", height=400)
 
         except Exception as e:
-            st.warning("地图数据解析不完整，仅展示文字攻略。")
+            # 处理地图数据可能缺失或损坏的情况
+            st.warning(f"地图数据解析不完整，可能缺少经纬度信息。仅展示文字攻略。错误详情: {e}")
 
         st.divider()
 
-        # --- B. 每日文字详情 ---
-        for day in skeleton:
-            with st.expander(f"📅 Day {day['day']}：{day['title']}", expanded=True):
-                st.markdown(day['content'])
+        # --- 每日文字详情 ---
+        for day_plan in travel_skeleton:
+            expander_title = f"📅 Day {day_plan['day']}：{day_plan['title']}"
+            with st.expander(expander_title, expanded=True):
+                st.markdown(day_plan['content'])
 
-    with tab2:
+    with tab_logistics:
+        st.header("行前准备与智能后勤")
         st.markdown(data['logistics'])
 
-    with tab3:
-        st.success("✅ 您的路书已准备就绪")
+    with tab_export:
+        st.success("✅ 您的攻略已准备就绪")
 
-        # 生成 PDF
+        # 按需生成 PDF 字节流
         if st.button("生成 PDF 文件"):
             pdf_bytes = create_pdf(
-                dest,
+                destination,
                 data['summary'],
-                data['full_md'],
+                data['full_markdown_report'],
                 data['logistics']
             )
+
             st.download_button(
-                label="⬇️ 点击下载完整路书 (.pdf)",
+                label="⬇️ 点击下载完整攻略 (.pdf)",
                 data=pdf_bytes,
-                file_name=f"{dest}_Travel_Guide.pdf",
+                file_name=f"{destination}_旅游攻略.pdf",
                 mime="application/pdf"
             )
+            st.success("PDF 生成成功，请点击下载按钮。")

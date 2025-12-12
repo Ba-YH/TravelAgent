@@ -5,23 +5,20 @@ import config
 client = OpenAI(api_key=config.API_KEY, base_url=config.BASE_URL)
 
 def call_llm(prompt, system_role="You are a helpful assistant."):
-    """通用 LLM 调用函数"""
-    try:
-        response = client.chat.completions.create(
-            model=config.MODEL_NAME,
-            messages=[
-                {"role": "system", "content": system_role},
-                {"role": "user", "content": prompt}
-            ],
-            temperature=0.7,
-            response_format={"type": "json_object"} # 强制 JSON 模式，DeepSeek 支持
-        )
-        return response.choices[0].message.content
-    except Exception as e:
-        return str(e)
+    """用于返回 JSON 格式的调用"""
+    response = client.chat.completions.create(
+        model=config.MODEL_NAME,
+        messages=[
+            {"role": "system", "content": system_role},
+            {"role": "user", "content": prompt}
+        ],
+        temperature=0.7,
+        response_format={"type": "json_object"}
+    )
+    return response.choices[0].message.content
 
 def call_llm_text(prompt, system_role):
-    """用于生成长文本（非 JSON）的调用"""
+    """用于生成长文的调用"""
     response = client.chat.completions.create(
         model=config.MODEL_NAME,
         messages=[{"role": "system", "content": system_role}, {"role": "user", "content": prompt}],
